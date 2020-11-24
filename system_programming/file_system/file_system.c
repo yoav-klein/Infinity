@@ -176,8 +176,6 @@ void FindFile(int fd, struct ext2_group_desc *group, char *path)
 	printf("first block:\n");
 	printf("%s\n", result);
 	
-	
-	
 }
 
 int main(int argc, char **argv)
@@ -203,3 +201,5 @@ int main(int argc, char **argv)
 
 	return 0;
 }
+
+
