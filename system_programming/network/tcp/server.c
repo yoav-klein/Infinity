@@ -18,7 +18,7 @@ int CreateSocket()
 		perror("socket creation");
 		exit(1);
 	}
-	if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, 
+	if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, 
 												&opt, sizeof(opt))) 
 	{ 
 		perror("setsockopt"); 
@@ -59,6 +59,7 @@ void PingPong(int sockfd)
 		exit(1);
 	}
 	
+	printf("After listen\n");
 	client_addr_size = sizeof(cliaddr);
 	cfd = accept(sockfd, (struct sockaddr*)&cliaddr, &client_addr_size);
 	if(-1 == cfd)
@@ -66,6 +67,8 @@ void PingPong(int sockfd)
 		perror("accept");
 		exit(1);
 	}
+	printf("Received connection from: %s\n", inet_ntoa(cliaddr.sin_addr));
+	printf("New socket: %d\n", cfd);
 	for(i = 0; i < TIMES; ++i)
 	{
 		char buffer[50];
