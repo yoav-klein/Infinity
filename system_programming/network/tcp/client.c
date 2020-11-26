@@ -21,13 +21,13 @@ int CreateSocket()
 	return sockfd;
 }
 
-void Connect(int sockfd)
+void Connect(int sockfd, char* server_addr_string)
 {
 	struct sockaddr_in servaddr;
 	
 	memset(&servaddr, 0, sizeof(servaddr));
 	servaddr.sin_family = AF_INET;
-	servaddr.sin_addr.s_addr = INADDR_ANY;
+	servaddr.sin_addr.s_addr = inet_addr(server_addr_string);
 	servaddr.sin_port = htons(PORT);
 	
 	if(-1 == connect(sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr)))
@@ -73,11 +73,18 @@ void PingPong(int sockfd)
 	
 }
 
-int main()
+int main(int argc, char** argv)
 {
-	int sockfd = CreateSocket();
+	int sockfd = 0;
+	if(argc < 2) 
+	{
+		printf("Please enter server IP address\n");
+		exit(1);
+	}
 	
-	Connect(sockfd);
+	sockfd = CreateSocket();
+		
+	Connect(sockfd, argv[1]);
 	
 	PingPong(sockfd);
 	

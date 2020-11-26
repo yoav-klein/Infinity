@@ -42,6 +42,7 @@ void Bind(int sockfd)
 		perror("bind");
 		exit(1);
 	}
+	printf("Bound to %s\n", inet_ntoa(servaddr.sin_addr));
 }
 
 void PingPong(int sockfd)
