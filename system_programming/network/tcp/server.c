@@ -28,13 +28,20 @@ int CreateSocket()
 	return sockfd;
 }
 
-void Bind(int sockfd)
+void Bind(int sockfd, int is_specific_addr, char* addr)
 {
 	struct sockaddr_in servaddr;
 	
 	memset(&servaddr, 0, sizeof(servaddr));
 	servaddr.sin_family = AF_INET;
-	servaddr.sin_addr.s_addr = INADDR_ANY;
+	if(is_specific_addr)
+	{
+		servaddr.sin_addr.s_addr = inet_addr(addr);
+	}
+	else
+	{
+		servaddr.sin_addr.s_addr = INADDR_ANY;
+	}
 	servaddr.sin_port = htons(PORT);
 	
 	if(-1 == bind(sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr)))
@@ -94,11 +101,18 @@ void PingPong(int sockfd)
 	}
 }
 
-int main()
+int main(int argc, char** argv)
 {
 	int sockfd = CreateSocket();
+	if(argc > 1)
+	{
+		Bind(sockfd, 1, argv[1]);
+	}
+	else
+	{
+		Bind(sockfd, 0, NULL);
+	}
 	
-	Bind(sockfd);
 	
 	PingPong(sockfd);
 	

@@ -55,5 +55,7 @@ function setup_bridge()
 	sudo ip netns exec blue ip link set veth-blue up
 	echo "veth-blue-br up"
 	sudo ip link set veth-blue-br up
+	echo "assign ip address to the bridge"
+	sudo ip addr add 192.168.15.5/24 dev bridge
 	
 }
