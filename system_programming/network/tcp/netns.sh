@@ -25,6 +25,12 @@ function setup() {
 
 }
 
+create_ns()
+{
+	sudo ip netns add blue
+	sudo ip netns add red
+}
+
 function setup_bridge()
 {
 	echo "create bridge interface"
@@ -58,4 +64,12 @@ function setup_bridge()
 	echo "assign ip address to the bridge"
 	sudo ip addr add 192.168.15.5/24 dev bridge
 	
+	echo "add entry in routing table of red namespace for the local network"
+	# notice that if your network address is different, you should change it here
+	sudo ip netns exec red ip route add 192.168.1.0/24 via 192.168.15.5 
+	echo "add entry in routing table of blue namespace for the local network"
+	sudo ip netns exec blue ip route add 192.168.1.0/24 via 192.168.15.5	
 }
+
+
+
