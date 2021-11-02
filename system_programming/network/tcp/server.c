@@ -93,6 +93,47 @@ void Bind(int sockfd, int is_specific_addr, char* addr)
 	printf("Bound to %s\n", inet_ntoa(servaddr.sin_addr));
 }
 
+
+void TalkToClient(int epoll_fd)
+{
+	struct epoll_event events[MAX_EVENTS];
+	char buffer[BUFFSIZE] = { 0 };
+	int nfds = 0, i = 0;
+	
+	while(1)
+	{
+		nfds = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
+		if(-1 == nfds)
+		{
+			perror("epoll_wait");
+			exit(1);
+		}
+		
+		for(i = 0; i < nfds; ++i)
+		{
+			if(0 == events[i].data.fd)
+			{
+				
+				Read(0, buffer);
+				WriteToClient(buffer);
+			}
+			if(cfd == events[i].data.fd && (events[i].events & EPOLLIN))
+			{
+				printf("peer: %d\n", events[i].events);
+				Read(cfd, buffer);
+				printf("%s", buffer);
+			}
+			if(cfd == events[i].data.fd && (events[i].events & (EPOLLRDHUP | EPOLLHUP)))
+			{	
+				printf("peer hung up\n");
+				exit(1);
+			}
+		}
+		
+	}
+}
+
+
 void ReceiveConnection(int sockfd)
 {
 	struct sockaddr_in cliaddr;
@@ -133,14 +174,14 @@ int ConfigureEpoll()
 		exit(1);	
 	}
 	
-	stdin_event.events = EPOLLIN;
+	stdin_event.events = EPOLLIN | EPOLLRDHUP | EPOLLHUP;
 	stdin_event.data.fd = 0;
 	if(-1 == epoll_ctl(epoll_fd, EPOLL_CTL_ADD, 0, &stdin_event))
 	{
 		perror("epoll_ctl");
 	}
 	
-	client_event.events = EPOLLIN;
+	client_event.events = EPOLLIN | EPOLLRDHUP | EPOLLHUP;
 	client_event.data.fd = cfd;
 	if(-1 == epoll_ctl(epoll_fd, EPOLL_CTL_ADD, cfd, &client_event))
 	{
@@ -150,38 +191,6 @@ int ConfigureEpoll()
 	return epoll_fd;
 }
 
-void TalkToClient(int epoll_fd)
-{
-	struct epoll_event events[MAX_EVENTS];
-	char buffer[BUFFSIZE] = { 0 };
-	int nfds = 0, i = 0;
-	
-	while(1)
-	{
-		printf("epoll wait\n");
-		nfds = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
-		if(-1 == nfds)
-		{
-			perror("epoll_wait");
-			exit(1);
-		}
-		
-		for(i = 0; i < nfds; ++i)
-		{
-			if(0 == events[i].data.fd)
-			{
-				Read(0, buffer);
-				WriteToClient(buffer);
-			}
-			if(cfd == events[i].data.fd)
-			{
-				Read(cfd, buffer);
-				printf("%s", buffer);
-			}
-		}
-		
-	}
-}
 
 void ConfigureSighandler()
 {
@@ -213,10 +222,7 @@ int main(int argc, char** argv)
 	ConfigureSighandler();
 	ReceiveConnection(sockfd);
 	epoll_fd = ConfigureEpoll();
-	
-	/*PingPong(sockfd);*/
 	TalkToClient(epoll_fd);
-	
 	
 	
 	return 0;

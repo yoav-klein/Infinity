@@ -80,7 +80,6 @@ function setup_bridge()
 	echo "assign ip address to the bridge"
 	sudo ip addr add $IP_BRIDGE/24 dev bridge
 	
-	
 	echo "Please enter the network address in CIDR notation"
 	netaddr=''
 	while [[ ! $netaddr =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]/[0-9]{2}$ ]]; do
