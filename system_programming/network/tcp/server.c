@@ -1,13 +1,54 @@
+
+#define _POSIX_C_SOURCE 1
+#include <signal.h> /* sigaction */
 #include <stdio.h> /* printf */
 #include <sys/types.h>   /* socket */
 #include <sys/socket.h> /* socket */
 #include <stdlib.h> /* exit */
 #include <arpa/inet.h>  /* INADDR_ANY */
 #include <string.h> /* memset */
+#include <sys/epoll.h> /* epoll_create1 */
+#include <unistd.h> /* close */
 
+
+#define MAX_EVENTS (10)
+#define BUFFSIZE (100)
 #define TIMES (20)
 #define PORT (8080)
 #define LISTEN_BACKLOG (50)
+
+
+int cfd = 0;
+
+void SigintHandler(int signum)
+{
+	(void)signum;
+	printf("Received a sigint, terminating\n");
+	
+	close(cfd);
+	exit(1);
+}
+
+
+void Read(int fd, char *buffer)
+{
+	int bytes_read = 0;
+	
+	bytes_read = read(fd, buffer, BUFFSIZE);
+	if(-1 == bytes_read)
+	{
+		perror("read");
+	}
+	buffer[bytes_read] = 0;
+}
+
+void WriteToClient(char *buffer)
+{
+	while(*buffer)
+	{
+		write(cfd, buffer++, 1);
+	}
+}
 
 int CreateSocket()
 {
@@ -19,11 +60,11 @@ int CreateSocket()
 		exit(1);
 	}
 	if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, 
-												&opt, sizeof(opt))) 
-	{ 
+												&opt, sizeof(opt)))
+	{
 		perror("setsockopt"); 
-		exit(EXIT_FAILURE); 
-	} 
+		exit(EXIT_FAILURE);
+	}
 	
 	return sockfd;
 }
@@ -52,13 +93,11 @@ void Bind(int sockfd, int is_specific_addr, char* addr)
 	printf("Bound to %s\n", inet_ntoa(servaddr.sin_addr));
 }
 
-void PingPong(int sockfd)
+void ReceiveConnection(int sockfd)
 {
-	size_t i = 0;
-	int cfd;
-	socklen_t client_addr_size;
 	struct sockaddr_in cliaddr;
-	
+	socklen_t client_addr_size;	
+		
 	memset(&cliaddr, 0, sizeof(cliaddr));
 	
 	if(-1 == listen(sockfd, LISTEN_BACKLOG))
@@ -75,35 +114,93 @@ void PingPong(int sockfd)
 		perror("accept");
 		exit(1);
 	}
-	printf("Received connection from: %s\n", inet_ntoa(cliaddr.sin_addr));
+	
+	printf("Received connection from: %s:%d\n", inet_ntoa(cliaddr.sin_addr), cliaddr.sin_port);
 	printf("New socket: %d\n", cfd);
-	for(i = 0; i < TIMES; ++i)
+}
+
+int ConfigureEpoll()
+{
+	struct epoll_event stdin_event = { 0 };
+	struct epoll_event client_event = { 0 };
+	
+	int epoll_fd = 0;
+	
+	epoll_fd = epoll_create1(0); /* 0 is the flags parameter */
+	if(-1 == epoll_fd)
 	{
-		char buffer[50];
-		ssize_t n = 0;
-		char message[20];
-		
-		n = recv(cfd, buffer, 50, 0);
-		if(-1 == n)
+		perror("epoll_create1");
+		exit(1);	
+	}
+	
+	stdin_event.events = EPOLLIN;
+	stdin_event.data.fd = 0;
+	if(-1 == epoll_ctl(epoll_fd, EPOLL_CTL_ADD, 0, &stdin_event))
+	{
+		perror("epoll_ctl");
+	}
+	
+	client_event.events = EPOLLIN;
+	client_event.data.fd = cfd;
+	if(-1 == epoll_ctl(epoll_fd, EPOLL_CTL_ADD, cfd, &client_event))
+	{
+		perror("epoll_ctl");
+	}
+	
+	return epoll_fd;
+}
+
+void TalkToClient(int epoll_fd)
+{
+	struct epoll_event events[MAX_EVENTS];
+	char buffer[BUFFSIZE] = { 0 };
+	int nfds = 0, i = 0;
+	
+	while(1)
+	{
+		printf("epoll wait\n");
+		nfds = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
+		if(-1 == nfds)
 		{
-			perror("recv");
+			perror("epoll_wait");
 			exit(1);
 		}
-		buffer[n] = '\0';
 		
-		printf("Server: %s\n", buffer);
-		sprintf(message, "Hello from server no. %lu", i);
-		if(-1 == send(cfd, message, strlen(message), 0))
+		for(i = 0; i < nfds; ++i)
 		{
-			perror("send");
-			exit(1);
+			if(0 == events[i].data.fd)
+			{
+				Read(0, buffer);
+				WriteToClient(buffer);
+			}
+			if(cfd == events[i].data.fd)
+			{
+				Read(cfd, buffer);
+				printf("%s", buffer);
+			}
 		}
+		
 	}
 }
 
+void ConfigureSighandler()
+{
+	struct sigaction sa = { 0 };
+	sa.sa_handler = SigintHandler;
+	if(-1 == sigaction(SIGINT, &sa, NULL))
+	{
+		perror("sigaction");
+		exit(1);
+	}
+}
+
+
 int main(int argc, char** argv)
 {
+	
 	int sockfd = CreateSocket();
+	int epoll_fd = 0;
+	
 	if(argc > 1)
 	{
 		Bind(sockfd, 1, argv[1]);
@@ -113,8 +210,12 @@ int main(int argc, char** argv)
 		Bind(sockfd, 0, NULL);
 	}
 	
+	ConfigureSighandler();
+	ReceiveConnection(sockfd);
+	epoll_fd = ConfigureEpoll();
 	
-	PingPong(sockfd);
+	/*PingPong(sockfd);*/
+	TalkToClient(epoll_fd);
 	
 	
 	
