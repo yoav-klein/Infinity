@@ -13,7 +13,6 @@
 
 #define MAX_EVENTS (10)
 #define BUFFSIZE (100)
-#define TIMES (20)
 #define PORT (8080)
 #define LISTEN_BACKLOG (50)
 
@@ -117,17 +116,18 @@ void TalkToClient(int epoll_fd)
 				Read(0, buffer);
 				WriteToClient(buffer);
 			}
+			if(cfd == events[i].data.fd && (events[i].events & (EPOLLRDHUP | EPOLLHUP)))
+			{	
+				printf("peer hung up\n");
+				exit(1);
+			}
 			if(cfd == events[i].data.fd && (events[i].events & EPOLLIN))
 			{
 				printf("peer: %d\n", events[i].events);
 				Read(cfd, buffer);
 				printf("%s", buffer);
 			}
-			if(cfd == events[i].data.fd && (events[i].events & (EPOLLRDHUP | EPOLLHUP)))
-			{	
-				printf("peer hung up\n");
-				exit(1);
-			}
+			
 		}
 		
 	}
@@ -156,7 +156,7 @@ void ReceiveConnection(int sockfd)
 		exit(1);
 	}
 	
-	printf("Received connection from: %s:%d\n", inet_ntoa(cliaddr.sin_addr), cliaddr.sin_port);
+	printf("Received connection from: %s:%d\n", inet_ntoa(cliaddr.sin_addr), ntohs(cliaddr.sin_port));
 	printf("New socket: %d\n", cfd);
 }
 
