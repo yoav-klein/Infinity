@@ -86,11 +86,13 @@ function setup_bridge()
 		read -p "Network address: " netaddr
 	done
 	
-	echo "add entry in routing table of red namespace for the local network"
+	echo "add entry in routing tables of namespaces for the local network"
 	sudo ip netns exec red ip route add $netaddr via $IP_BRIDGE 
+	sudo ip netns exec blue ip route add $netaddr via $IP_BRIDGE
 	
-	echo "add entry in routing table of blue namespace for the local network"
-	sudo ip netns exec blue ip route add $netaddr via $IP_BRIDGE	
+	echo "add entry in routing table of namespaces for default"
+	sudo ip netns exec red ip route add default via $IP_BRIDGE
+	sudo ip netns exec blue ip route add default via $IP_BRIDGE
 	
 	echo "Enable IPv4 forwarding on the host"
 	sudo sysctl -w net.ipv4.ip_forward=1
