@@ -1,3 +1,12 @@
+
+RED="\e[31m"
+GREEN="\e[32m"
+END="\e[0m"
+
+function LOG() {
+	echo -e "${GREEN}******* $1 *******${END}"
+}
+
 function build() {
 	gd server.c -o server.out
 	gd client.c -o client.out
@@ -7,20 +16,20 @@ function clean() {
 	rm *.out
 }
 
-function setup() {
-	echo "create veth pair"
+function setup_simple() {
+	LOG "create veth pair"
 	sudo ip link add veth-red type veth peer name veth-blue
-	echo "set veth-red to red namespace"
+	LOG "set veth-red to red namespace"
 	sudo ip link set veth-red netns red
-	echo "set veth-blue to blue namespace"
+	LOG "set veth-blue to blue namespace"
 	sudo ip link set veth-blue netns blue
-	echo "assign ip address to veth-red"
+	LOG "assign ip address to veth-red"
 	sudo ip netns exec red ip addr add 192.168.15.1/24 dev veth-red
-	echo "assign ip address to veth-blue"
+	LOG "assign ip address to veth-blue"
 	sudo ip netns exec blue ip addr add 192.168.15.2/24 dev veth-blue
-	echo "veth-red up"
+	LOG "veth-red up"
 	sudo ip netns exec red ip link set veth-red up
-	echo "veth-blue up"
+	LOG "veth-blue up"
 	sudo ip netns exec blue ip link set veth-blue up
 
 }
@@ -42,64 +51,72 @@ function create_ns()
 
 function setup_bridge()
 {
-	IP_NS=192.168.15
-	IP_RED=$IP_NS.1
-	IP_BLUE=$IP_NS.2
-	IP_BRIDGE=$IP_NS.5
+	echo "Enter the network address of the bridge network in the form: x.y.z"
+	bridge_network=''
+	while [[ ! $bridge_network =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; do
+		read -p "Bridge network address: " bridge_network
+	done
 	
-	echo "create bridge interface"
-	sudo ip link add bridge type bridge
+	read -p "Enter bridge name: " bridge_name
+	LOG "create bridge interface"
+	sudo ip link add ${bridge_name} type bridge
 	
-	echo "bring bridge up"
-	sudo ip link set dev bridge up
+	LOG "bring bridge up"
+	sudo ip link set dev ${bridge_name} up
 	
-	echo "create veth-pairs"
-	sudo ip link add veth-red type veth peer name veth-red-br
-	sudo ip link add veth-blue type veth peer name veth-blue-br
+	declare -a namespaces
+	ns_name=''
+	while [[ $ns_name != "0" ]]; do
+		read -p "Enter namespace name, 0 to stop: " ns_name
+		if [ $ns_name == "0" ]; then
+			continue
+		fi
+		
+		i=${#namespaces[@]}
+		echo "New namespace: $ns_name"
+		namespaces[$i]=$ns_name
+		
+		LOG "creating namespace: $ns_name"
+		sudo ip netns add $ns_name
+		LOG "create veth pair for namespace $ns_name"
+		veth_name="veth-$ns_name"
+		sudo ip link add ${veth_name}  \
+		type veth peer name ${veth_name}-br
+		LOG "setting the ${veth_name} in the namespace"
+		sudo ip link set dev ${veth_name} netns ${namespaces[$i]}
+		LOG "setting the other end to the bridge"
+		sudo ip link set dev ${veth_name}-br master ${bridge_name}
+		LOG "assigning IP for the interface in the namespace"
+		sudo ip netns exec ${namespaces[$i]} ip addr add dev ${veth_name} \
+		${bridge_network}.$((${i}+1))/24
+		LOG "setting ${veth_name} up"
+		sudo ip netns exec ${namespaces[$i]} ip link set ${veth_name} up
+		LOG "setting ${veth_name}-br up"
+		sudo ip link set ${veth_name}-br up
+		
+	done
 	
-	echo "set the veths to the namespaces"
-	sudo ip link set dev veth-red netns red
-	sudo ip link set dev veth-blue netns blue
+	LOG "assign ip address to the bridge"
+	bridge_ip=${bridge_network}.$((${#namespaces[@]}+1))
+	sudo ip addr add $bridge_ip/24 dev ${bridge_name}
 	
-	echo "set the other ends of the veths to the bridge"
-	sudo ip link set dev veth-red-br  master bridge
-	sudo ip link set dev veth-blue-br master bridge
-	
-	echo "assign ip for interfaces in the namespaces"
-	sudo ip netns exec red  ip addr add $IP_RED/24 dev veth-red
-	sudo ip netns exec blue ip addr add $IP_BLUE/24 dev veth-blue
-	
-	echo "set veths up"
-	sudo ip netns exec red  ip link set veth-red up
-	sudo ip netns exec blue ip link set veth-blue up
-	
-	echo "set veth peers up"
-	sudo ip link set veth-red-br  up
-	sudo ip link set veth-blue-br up
-	
-	echo "assign ip address to the bridge"
-	sudo ip addr add $IP_BRIDGE/24 dev bridge
-	
-	echo "Please enter the network address in CIDR notation"
+	echo "Please enter the local network address in CIDR notation"
 	netaddr=''
 	while [[ ! $netaddr =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]/[0-9]{2}$ ]]; do
 		read -p "Network address: " netaddr
 	done
 	
-	echo "add entry in routing tables of namespaces for the local network"
-	sudo ip netns exec red ip route add $netaddr via $IP_BRIDGE 
-	sudo ip netns exec blue ip route add $netaddr via $IP_BRIDGE
-	
-	echo "add entry in routing table of namespaces for default"
-	sudo ip netns exec red ip route add default via $IP_BRIDGE
-	sudo ip netns exec blue ip route add default via $IP_BRIDGE
+	for((i=0; i<${#namespaces[@]}; i++)); do
+		LOG "add entry in routing table of namespace: ${namespaces[$i]}"
+		sudo ip netns exec ${namespaces[$i]} ip route add $netaddr via $bridge_ip		
+		sudo ip netns exec ${namespaces[$i]} ip route add default via $bridge_ip
+	done
 	
 	echo "Enable IPv4 forwarding on the host"
 	sudo sysctl -w net.ipv4.ip_forward=1
 	
-	
 	echo "set iptable nat rule to masquerade packets coming from the namespaces"
-	sudo iptables -t nat -A POSTROUTING -s $IP_NS.0/24 -j MASQUERADE
+	sudo iptables -t nat -A POSTROUTING -s $bridge_network.0/24 -j MASQUERADE
 }
 
 

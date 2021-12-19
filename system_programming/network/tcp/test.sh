@@ -1,14 +1,17 @@
 
-netaddr=''
+declare -a namespaces
 
-IP_NS=192.168.15
-IP_RED=$IP_NS.2
-
-echo $IP_RED
-
-while [[ ! $netaddr =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]$ ]]; do
-	read -p "Network address: " netaddr
+ns_name=''
+while [[ $ns_name != "0" ]]; do
+	read -p "New namespace name: " ns_name
+	if [ $ns_name == "0" ]; then
+		continue
+	fi
+	echo "New namespace: $ns_name"
+	namespaces[${#namespaces[@]}]=$ns_name
 done
 
-
+for ns in ${namespaces[@]}; do
+	echo $ns
+done
 
